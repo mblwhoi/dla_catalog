@@ -1,0 +1,14 @@
+
+name = Active Tags Popular
+description = Further enhance Active Tags by making it easy for users to select from some popular tags
+dependencies[] = active_tags
+package = User interface
+core = 6.x
+
+
+; Information added by drupal.org packaging script on 2011-02-25
+version = "6.x-1.x-dev"
+core = "6.x"
+project = "active_tags"
+datestamp = "1298618792"
+

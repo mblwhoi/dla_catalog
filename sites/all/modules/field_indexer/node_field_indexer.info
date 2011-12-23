@@ -1,0 +1,13 @@
+; $Id: node_field_indexer.info,v 1.2 2009/01/04 22:29:07 davidlesieur Exp $
+name = Node Field Indexer
+description = "Allows the indexing of core node data into the search index."
+dependencies[] = field_indexer
+core = 6.x
+
+
+; Information added by drupal.org packaging script on 2009-02-09
+version = "6.x-1.0"
+core = "6.x"
+project = "field_indexer"
+datestamp = "1234143919"
+

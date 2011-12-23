@@ -1,0 +1,11 @@
+name = "Display suite UI"
+description = "Administrative interface to display suite. Without this module, you cannot manage your display settings, fields etc."
+core = "6.x"
+package = "Display suite"
+dependencies[] = ds
+; Information added by drupal.org packaging script on 2011-11-24
+version = "6.x-2.0-rc1"
+core = "6.x"
+project = "ds"
+datestamp = "1322119840"
+

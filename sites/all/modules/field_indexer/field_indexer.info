@@ -1,0 +1,12 @@
+; $Id: field_indexer.info,v 1.3 2009/01/05 01:20:16 davidlesieur Exp $
+name = Field Indexer
+description = "Provides a configuration page and an API for indexing fields into the search index."
+dependencies[] = search
+core = 6.x
+
+; Information added by drupal.org packaging script on 2009-02-09
+version = "6.x-1.0"
+core = "6.x"
+project = "field_indexer"
+datestamp = "1234143919"
+

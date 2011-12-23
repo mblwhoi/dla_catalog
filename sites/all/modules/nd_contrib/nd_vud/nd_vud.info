@@ -1,0 +1,14 @@
+name = "ND Vote up/down"
+description = "Vote up/down support for node displays"
+core = "6.x"
+dependencies[] = nd
+dependencies[] = nd_cck
+dependencies[] = vud
+dependencies[] = vud_node
+package = "Display suite"
+; Information added by drupal.org packaging script on 2011-11-14
+version = "6.x-2.6"
+core = "6.x"
+project = "nd_contrib"
+datestamp = "1321277735"
+

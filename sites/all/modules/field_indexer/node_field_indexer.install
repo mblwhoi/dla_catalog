@@ -1,0 +1,11 @@
+<?php
+// $Id: node_field_indexer.install,v 1.1 2008/06/19 20:29:49 davidlesieur Exp $
+
+/**
+ * Implementation of hook_uninstall().
+ */
+function node_field_indexer_uninstall() {
+  if (db_table_exists('field_indexer_map')) {
+    db_query("DELETE FROM {field_indexer_map} WHERE namespace = 'node'");
+  }
+}

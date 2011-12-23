@@ -1,0 +1,12 @@
+name = CCK Date Facets
+description = "Exposes CCK Date fields as facets."
+core = 6.x
+dependencies[] = cck_facets
+dependencies[] = date
+package = Faceted Search
+; Information added by drupal.org packaging script on 2011-02-25
+version = "6.x-1.x-dev"
+core = "6.x"
+project = "cck_facets"
+datestamp = "1298618944"
+

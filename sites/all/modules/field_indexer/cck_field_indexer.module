@@ -1,0 +1,64 @@
+<?php
+// $Id: cck_field_indexer.module,v 1.2 2008/05/26 21:02:49 davidlesieur Exp $
+
+/**
+ * @file
+ * Exposes CCK fields for indexing into the search index.
+ */
+
+/**
+ * Implementation of hook_field_indexer_list().
+ *
+ * Retrieve all fields provided by CCK.
+ *
+ * @return
+ *   An array describing the fields, each field being represented by an array
+ *   with the following attributes:
+ *   - name: Machine name or id of the field.
+ *   - extra_name: Extra field name or id information.
+ *   - label: Printable name of the field.
+ *   - help: Optional info that may help in identifying the field.
+ */
+function cck_field_indexer_field_indexer_list() {
+  $cck_fields = content_fields();
+  $fields = array();
+  foreach ($cck_fields as $field) {
+    $fields[] = array(
+      'namespace' => 'cck',
+      'name' => $field['field_name'],
+      'extra_name' => '',
+      'label' => $field['widget']['label'],
+      'help' => $field['field_name'],
+    );
+  }
+  return $fields;
+}
+
+/**
+ * Implementation of hook_nodeapi().
+ *
+ * This is used to add our own entries to the search index. Using nodeapi's
+ * update index operation is convenient, since the node module already handles
+ * the logic for determining which nodes need indexing.
+ */
+function cck_field_indexer_nodeapi(&$node, $op, $a3 = NULL, $a4 = NULL) {
+  static $fields = NULL;
+  if ($op == 'update index') {
+    if (!isset($fields)) {
+      $fields = field_indexer_load_fields(TRUE, 'cck');
+    }
+    $type = content_types($node->type);
+    foreach ($fields as $field) {
+      if (isset($type['fields'][$field['name']]) && isset($node->{$field['name']})) {
+        $value = '';
+        foreach ($node->{$field['name']} as $item) {
+          $value .= ' '. content_format($type['fields'][$field['name']], $item, 'default', $node);
+        }
+        if (trim($value) != '') {
+          field_indexer_index($node->nid, $field['fiid'], $value);
+        }
+      }
+    }
+  }
+}
+

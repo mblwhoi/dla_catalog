@@ -1,0 +1,80 @@
+<?php
+// $Id: field_indexer.install,v 1.2 2009/01/04 22:29:07 davidlesieur Exp $
+
+/**
+ * Implementation of hook_schema().
+ */
+function field_indexer_schema() {
+  $schema['field_indexer_map'] = array(
+    'fields' => array(
+      'fiid' => array(
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'namespace' => array(
+        'type' => 'varchar',
+        'length' => '64',
+        'not null' => TRUE,
+        'default' => ''
+      ),
+      'name' => array(
+        'type' => 'varchar',
+        'length' => '32',
+        'not null' => TRUE,
+        'default' => ''
+      ),
+      'extra_name' => array(
+        'type' => 'varchar',
+        'length' => '32',
+        'not null' => TRUE,
+        'default' => ''
+      ),
+      'status' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'label' => array(
+        'type' => 'varchar',
+        'length' => '255',
+        'not null' => TRUE,
+        'default' => ''
+      )
+    ),
+    'primary key' => array('fiid'),
+    'indexes' => array(
+      'namespace_name' => array(
+        'namespace',
+        'name',
+        'extra_name'
+      )
+    ),
+  );
+  return $schema;
+}
+
+/**
+ * Implementation of hook_install().
+ */
+function field_indexer_install() {
+  drupal_install_schema('field_indexer');
+}
+
+/**
+ * Implementation of hook_uninstall().
+ */
+function field_indexer_uninstall() {
+  drupal_uninstall_schema('field_indexer');
+}
+
+/**
+ * Implementation of hook_disable().
+ */
+function field_indexer_disable() {
+  // Delete all field index entries.
+  foreach (field_indexer_load_fields(TRUE) as $field) {
+    field_indexer_wipe($field['fiid']);
+  }
+}
+

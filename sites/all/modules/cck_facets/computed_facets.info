@@ -1,0 +1,12 @@
+name = CCK Computed Facets
+description = "Exposes CCK Computed fields as facets."
+core = 6.x
+dependencies[] = computed_field
+dependencies[] = cck_facets
+package = Faceted Search
+; Information added by drupal.org packaging script on 2011-02-25
+version = "6.x-1.x-dev"
+core = "6.x"
+project = "cck_facets"
+datestamp = "1298618944"
+

@@ -1,0 +1,61 @@
+<?php
+// $Id: node_field_indexer.module,v 1.2 2008/06/22 17:22:08 davidlesieur Exp $
+
+/**
+ * @file
+ * Exposes core node data for indexing into the search index.
+ */
+
+/**
+ * Implementation of hook_field_indexer_list().
+ *
+ * @return
+ *   An array describing the fields, each field being represented by an array
+ *   with the following attributes:
+ *   - name: Machine name or id of the field.
+ *   - extra_name: Extra field name or id information.
+ *   - label: Printable name of the field.
+ *   - help: Optional info that may help in identifying the field.
+ */
+function node_field_indexer_field_indexer_list() {
+  // Node title.
+  $fields[] = array(
+    'namespace' => 'node',
+    'name' => 'title',
+    'extra_name' => '',
+    'label' => t('Title'),
+    'help' => '',
+  );
+  // TODO: Node author.
+  return $fields;
+}
+
+/**
+ * Implementation of hook_nodeapi().
+ *
+ * This is used to add our own entries to the search index. Using nodeapi's
+ * update index operation is convenient, since the node module already handles
+ * the logic for determining which nodes need indexing.
+ */
+function node_field_indexer_nodeapi(&$node, $op, $a3 = NULL, $a4 = NULL) {
+  static $fields = NULL;
+  if ($op == 'update index') {
+    if (!isset($fields)) {
+      $fields = field_indexer_load_fields(TRUE, 'node');
+    }
+    foreach ($fields as $field) {
+      $value = '';
+      switch ($field['name']) {
+        case 'title':
+          if (isset($node->title)) {
+            $value = check_plain($node->title);
+          }
+          break;
+      }
+      if (trim($value) != '') {
+        field_indexer_index($node->nid, $field['fiid'], $value);
+      }
+    }
+  }
+}
+

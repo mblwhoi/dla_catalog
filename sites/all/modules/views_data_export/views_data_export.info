@@ -1,0 +1,12 @@
+name = Views Data Export
+description = "Plugin to export views data into various file formats"
+dependencies[] = views
+package = Views
+core = 6.x
+
+; Information added by drupal.org packaging script on 2011-11-25
+version = "6.x-3.x-dev"
+core = "6.x"
+project = "views_data_export"
+datestamp = "1322224913"
+

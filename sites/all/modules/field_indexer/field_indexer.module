@@ -1,0 +1,125 @@
+<?php
+// $Id: field_indexer.module,v 1.7 2009/01/05 01:30:46 davidlesieur Exp $
+
+/**
+ * @file
+ * Indexes field content for use by modules that implement field search.
+ */
+
+/**
+ * Implementation of hook_menu().
+ */
+function field_indexer_menu() {
+  $items = array();
+  $items['admin/settings/field_indexer'] = array(
+    'title' => 'Field indexer',
+    'access callback' => user_access,
+    'access arguments' => array('administer search'),
+    'description' => 'Enable fields for use by field searches.',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('field_indexer_admin'),
+    'file' => 'field_indexer.admin.inc',
+  );
+
+  return $items;
+}
+
+/**
+ * Update the full-text search index for a particular field value.
+ *
+ * @param $nid
+ *   Id of the node containing the value.
+ * @param $fiid
+ *   Id of the field containing the value.
+ * @param $text
+ *   The content of the field. Must be a piece of HTML text.
+ */
+function field_indexer_index($nid, $fiid, $text) {
+  search_index($nid, field_indexer_type($fiid), $text);
+}
+
+/**
+ * Mark all nodes for re-indexing.
+ */
+function field_indexer_reindex() {
+  node_search('reset');
+}
+
+/**
+ * Delete index entries for the specified field.
+ */
+function field_indexer_wipe($fiid) {
+  $type = field_indexer_type($fiid);
+  db_query("DELETE FROM {search_dataset} WHERE type = '%s'", $type);
+  db_query("DELETE FROM {search_index} WHERE type = '%s'", $type);
+  db_query("DELETE FROM {search_node_links} WHERE type = '%s'", $type);
+}
+
+/**
+ * Retrieve a fresh list of fields that are exposed by modules for indexing.
+ */
+function field_indexer_find_fields() {
+  $fields = array();
+  foreach (module_implements('field_indexer_list') as $module) {
+    $module_fields = module_invoke($module, 'field_indexer_list');
+    foreach ($module_fields as $field) {
+      // Add the field.
+      $fields[_field_indexer_key($field)] = $field;
+    }
+  }
+  return $fields;
+}
+
+/**
+ * Retrieve the fields settings from the database.
+ *
+ * @param $status
+ *   Optional status of the fields to be returned (TRUE for fields that are
+ *   enabled for indexing, FALSE for fields that are not being indexed). When
+ *   set, only fields with the given status are returned. When not set, all
+ *   indexable fields are returned.
+ * @param $namespace
+ *   Optional namespace of whose fields we are interested in. When not
+ *   specified, all indexable fields are returned.
+ * @return
+ *   An array describing the fields.
+ */
+function field_indexer_load_fields($status = NULL, $namespace = NULL) {
+  $where = array();
+  $args = array();
+  if (isset($status)) {
+    $where[] = 'status = %d';
+    $args[] = $status ? 1 : 0;
+  }
+  if (isset($namespace)) {
+    $where[] = "namespace = '%s'";
+    $args[] = $namespace;
+  }
+  if (count($where)) {
+    $where = ' WHERE '. implode(' AND ', $where);
+  }
+  else {
+    $where = '';
+  }
+  $fields = array();
+  $results = db_query('SELECT * FROM {field_indexer_map}'. $where, $args);
+  while ($field = db_fetch_array($results)) {
+    $fields[_field_indexer_key($field)] = $field;
+  }
+  return $fields;
+}
+
+/**
+ * Return the index type of the specified field.
+ */
+function field_indexer_type($fiid) {
+  return 'field_'. $fiid;
+}
+
+/**
+ * Return a unique key for a field. This is useful when collecting fields whose
+ * fiid have not yet been assigned.
+ */
+function _field_indexer_key($field) {
+  return $field['namespace'] .'_'. $field['name'] .'_'. $field['extra_name'];
+}
