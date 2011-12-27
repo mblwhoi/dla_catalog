@@ -10,3 +10,6 @@
 [submodule "sites/all/modules/custom/ldap_authentication"]
 	path = sites/all/modules/custom/ldap_authentication
 	url = git@github.com:mblwhoi/drupal_ldap_authentication.git
+[submodule "sites/all/modules/custom/faceted_search"]
+	path = sites/all/modules/custom/faceted_search
+	url = git@github.com:mblwhoi/drupal_faceted_search.git
