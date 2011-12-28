@@ -233,22 +233,9 @@ class DLACatalogNodeProcessor extends FeedsProcessor {
 
             $item_node = "";
 
-            // If item nid was given, try to load item.
-            if ($v['nid']){
-              $item_node = node_load($v['nid']);
-            }
-            // Otherwise initialize a new item node.
-            else{
-              $item_node = new stdClass();
-              $item_node->created = FEEDS_REQUEST_TIME;
-              $item_node->type = 'item';
-
-              if (!$included) {
-                module_load_include('inc', 'node', 'node.pages');
-                $included = TRUE;
-              }
-              node_object_prepare($item_node);
-            }
+            // Load item node or initialize new node.
+            $item_node = $this->buildNode($v['nid'], $source->feed_nid);            
+            
 
             // Set item field values.
             $item_text_fields = array('item_format', 'item_extent', 'item_description');
