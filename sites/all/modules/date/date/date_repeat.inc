@@ -1,5 +1,4 @@
 <?php
-//$Id: date_repeat.inc,v 1.22.2.1.2.24 2010/10/26 10:21:36 karens Exp $
 /**
  * @file
  * Implementation of Date Repeat API calculations for the CCK Date field.
@@ -61,7 +60,7 @@ function _date_repeat_widget_validate($element, &$form_state) {
   $field = $fields[$field_name];
   $item = $form_values[$field_name];
   $values = date_repeat_merge($element['#post'][$field_name]['rrule'], $element['rrule']);
-  
+
   // If no start date was set, clean up the form and return.
   // If no repeats are set, clean up the form and return.
   if (empty($form_values[$field_name]['value']) || $values['FREQ'] == 'NONE') {
@@ -96,7 +95,7 @@ function _date_repeat_widget_validate($element, &$form_state) {
     ) {
 
     $item = $form_values[$field_name];
-    
+
     // Avoid undefined index problems on dates that don't have all parts.
     $possible_items = array('value', 'value2', 'timezone', 'offset', 'offset2');
     foreach ($possible_items as $key) {
@@ -124,14 +123,14 @@ function _date_repeat_widget_validate($element, &$form_state) {
 function date_repeat_build_dates($rrule = NULL, $values = NULL, $field, $item) {
   include_once('./'. drupal_get_path('module', 'date_api') .'/date_api_ical.inc');
   $field_name = $field['field_name'];
-  
+
   if (empty($rrule)) {
     $rrule = date_api_ical_build_rrule($values);
   }
   elseif (empty($values)) {
-    $values = date_ical_parse($rrule);
+    $values = date_ical_parse_rrule(NULL, $rrule);
   }
-    
+
   // By the time we get here, the start and end dates have been 
   // adjusted back to UTC, but we want localtime dates to do
   // things like '+1 Tuesday', so adjust back to localtime.
@@ -148,10 +147,9 @@ function date_repeat_build_dates($rrule = NULL, $values = NULL, $field, $item) {
   else {
     $end = $start;
   }
-
   $duration = date_difference($start, $end);
   $start_datetime = date_format($start, DATE_FORMAT_DATETIME);
-    
+
   if (!empty($values['UNTIL']['datetime'])) {
     $end = date_ical_date($values['UNTIL'], $timezone);
   }
@@ -162,19 +160,18 @@ function date_repeat_build_dates($rrule = NULL, $values = NULL, $field, $item) {
   $parsed_exceptions = (array) $parts[1];
   $exceptions = array();
   foreach ($parsed_exceptions as $exception) {
-    $date = date_ical_date($exception);
+    $date = date_ical_date($exception, $timezone);
     $exceptions[] = date_format($date, 'Y-m-d');
   }
 
   $parsed_rdates = (array) $parts[2];
   $additions = array();
   foreach ($parsed_rdates as $rdate) {
-    $additions[] = date_ical_date($rdate);
+    $additions[] = date_ical_date($rdate, $timezone);
   }
-  
+
   $dates = date_repeat_calc($rrule, $start_datetime, $end_datetime, $exceptions, $timezone, $additions);
 
-  
   $value = array();
   foreach ($dates as $delta => $date) {
     // date_repeat_calc always returns DATE_DATETIME dates, which is

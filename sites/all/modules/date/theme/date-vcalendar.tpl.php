@@ -1,5 +1,4 @@
 <?php
-// $Id: date-vcalendar.tpl.php,v 1.1.2.5 2010/11/20 13:25:54 karens Exp $
 /**
  * $calname
  *   The name of the calendar.
@@ -7,11 +6,16 @@
  *   @see date-vevent.tpl.php.
  *   @see date-valarm.tpl.php.
  */
+if (empty($method)) {
+  $method = 'PUBLISH';
+}
 ?>
 BEGIN:VCALENDAR
 VERSION:2.0
-METHOD:PUBLISH
-X-WR-CALNAME: <?php print $calname ?>
+METHOD:<?php print $method; ?>
+<?php if !empty($calname): ?>
+X-WR-CALNAME;VALUE=TEXT:<?php print $calname . "\r\n"; ?>
+<?php endif; ?>
 PRODID:-//Drupal iCal API//EN
 <?php foreach($events as $event): ?>
 <?php print theme('date_vevent', $event); ?>

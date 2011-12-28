@@ -1,5 +1,4 @@
 <?php
-// $Id: date-vevent.tpl.php,v 1.1.2.3 2010/11/20 13:25:54 karens Exp $
 /**
  * $event
  *   An array with the following information about each event:
