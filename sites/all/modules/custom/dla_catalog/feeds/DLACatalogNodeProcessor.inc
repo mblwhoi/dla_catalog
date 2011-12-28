@@ -90,7 +90,7 @@ class DLACatalogNodeProcessor extends FeedsProcessor {
 
         // Set date fields.
         $date_fields = array(
-                             'date'
+                             'date_created'
                              );
         foreach ($date_fields as $f){
           $node->{"field_$f"} = array();
