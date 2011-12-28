@@ -1,0 +1,6 @@
+name = "dla_catalog"
+description = "DLA Catalog site customizations."
+core = 6.x
+package = MBLWHOI
+dependencies[] = feeds
+
