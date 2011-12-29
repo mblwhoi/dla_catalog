@@ -39,7 +39,7 @@ class DLACatalogNodeProcessor extends FeedsProcessor {
         if ($result){
           $o = db_fetch_object($result);
           $batch->vocabulary_ids[$k] = $o->vid;
-        }        
+        }
       }
     }
 
@@ -113,7 +113,7 @@ class DLACatalogNodeProcessor extends FeedsProcessor {
           $node->{"field_$f"} = array();
           $values = json_decode($item[$f], TRUE);
           if (is_array($values)){
-          
+
             foreach ($values as $v){
 
               // Skip if there is no term name.
@@ -140,14 +140,14 @@ class DLACatalogNodeProcessor extends FeedsProcessor {
                               'description' => $v['description'],
                               'weight' => 0,
                               );
-              
+
                 $term['vid'] = $vid;
 
                 // Set parent if we have a parent tid.
                 $term['parent'] = $parent_tid ? array($parent_tid) : array();
                 $term['relations'] = array();
                 $term['synonyms'] = '';
-              
+
                 // Save term and get it as an object.
                 taxonomy_save_term($term);
                 $term = taxonomy_get_term($term['tid']);
@@ -162,7 +162,7 @@ class DLACatalogNodeProcessor extends FeedsProcessor {
             }
           }
         }
-        
+
 
         // Set identified taxonomy fields.
         $identified_taxonomy_fields = array(
@@ -203,14 +203,14 @@ class DLACatalogNodeProcessor extends FeedsProcessor {
                               'description' => $v['description'],
                               'weight' => 0,
                               );
-              
+
                 $term['vid'] = $vid;
                 $term['parent'] = array();
                 $term['relations'] = array();
                 $term['synonyms'] = '';
-    
+
                 $term['fields']['term_id'] = array('value' => $v['term_id_value']);
-    
+
                 // Create the term and load it as an object.
                 taxonomy_save_term($term);
                 $term = taxonomy_get_term($term['tid']);
@@ -234,8 +234,8 @@ class DLACatalogNodeProcessor extends FeedsProcessor {
             $item_node = "";
 
             // Load item node or initialize new node.
-            $item_node = $this->buildNode($v['nid'], $source->feed_nid);            
-            
+            $item_node = $this->buildNode($v['nid'], $source->feed_nid);
+
 
             // Set item field values.
             $item_text_fields = array('item_format', 'item_extent', 'item_description');
@@ -445,14 +445,7 @@ class DLACatalogNodeProcessor extends FeedsProcessor {
       $populate = TRUE;
     }
     else {
-      if ($this->config['update_existing'] == FEEDS_UPDATE_EXISTING) {
-        $node = node_load($nid, NULL, TRUE);
-      }
-      else {
-        $node->nid = $nid;
-        $node->vid = db_result(db_query("SELECT vid FROM {node} WHERE nid = %d", $nid));
-        $populate = TRUE;
-      }
+      $node = node_load($nid, NULL, TRUE);
     }
     if ($populate) {
       $node->type = $this->config['content_type'];
