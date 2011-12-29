@@ -1,0 +1,9 @@
+<?php
+
+/**
+ * Implementation of hook_uninstall().
+ */
+function file_maintenance_uninstall() {
+  // This beats multiple variable_del() calls.
+  db_query('DELETE FROM {variable} WHERE name LIKE "file_maintenance_%"');
+}

@@ -1,0 +1,698 @@
+<?php
+
+define('FILE_MAINTENANCE_DEFAULT_SEARCH', 'node_revisions|teaser,body');
+/**
+ * Implementation of hook_help()
+ */
+function file_maintenance_help($path, $arg) {
+  $output = '';
+  switch ($path) {
+    case 'admin/help#file_maintenance':
+      $output .= '<p>'.t('File maintenance allows you to perform maintenance on the files table. When performinc actions on the files, the File maintenance module will make sure that references in the content of nodes are updated to reflect these changes as well.').'</p>';
+      $output .= '<p>'.t("File maintenance allows you to rename, delete and move files. <strong>Deleting a file will not delete the file record from the database</strong>, but will replace it with a user definable image: a one pixel transparent gif or an 'image removed' file perhaps. This way all the references to the file's ID will be safeguarded so as not to break other tables and / or modules using them.<br /><strong>Files can only be moved within Drupal's files directory.</strong> If your files directory is <em>sites/default/files</em>, you can move a file from there to a new subdirectory by providing a destination like:<br />&nbsp; <em>sites/default/files/new-dir</em><br />or simply:<br />&nbsp; <em>new-dir</em>Leading and trailing slashes will automatically be stripped.<br />Moving a file back to the root of your files folder can be done by providing a simple slash (/) as the destination.").'</p>';
+      $output .= '<p>'.t('File maintenance also adds a new option to the Drupal core !link page called <em>Migrate files</em>. When you change your files directory using this form, you can use the <em>Migrate files</em> button, instead of the regular save button, to move all of the files present in the files table to the new folder, keeping the directory structure and making sure that the links in the content tables are adjusted as well.', array('!link' => l(t('File system'), 'admin/settings/file-system', array('attributes' => array('title' => t('File system')))))).'</p>';
+      break;
+    case 'admin/content/file-maintenance':
+      $output .= '<p>'.t('On this page you will find a list of directories and a list of files within them.<br />The directory in <strong>bold</strong> is the active directory. Switch directories by clicking on one in the <em>Directories</em> table.<br />Files marked in <span class="error">red</span> are listed in the database but could not be found on disk!').'</p>';
+      break;
+    case 'admin/settings/file-maintenance':
+      $output .= '<p>'.t('Do not go in to the advanced settings section unless you know what you are doing!').'</p>';
+      break;
+  }
+
+  return $output;
+}
+
+/**
+ * Implementation of hook_perm()
+ */
+function file_maintenance_perm() {
+  return array('access file maintenance', 'administer file maintenance');
+}
+
+/**
+ * Implementation of hook_menu()
+ */
+function file_maintenance_menu() {
+  $items = array();
+
+  $items['admin/content/file-maintenance'] = array(
+    'title' => t('File maintenance'),
+    'description' => t('Perform maintenance on the files in the database.'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('file_maintenance_content_form'),
+    'access callback' => 'user_access',
+    'access arguments' => array('access file maintenance'),
+    'type' => MENU_NORMAL_ITEM,
+    'file' => 'includes/file_maintenance.admin.inc',
+  );
+
+  $items['admin/settings/file-maintenance'] = array(
+    'title' => t('File maintenance'),
+    'description' => t('Setup the File maintenance module.'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('file_maintenance_settings_form'),
+    'access callback' => 'user_access',
+    'access arguments' => array('administer file maintenance'),
+    'type' => MENU_NORMAL_ITEM,
+    'file' => 'includes/file_maintenance.admin.inc',
+  );
+
+  $items['admin/reports/file-maintenance'] = array(
+    'title' => t('File maintenance'),
+    'description' => t('Report of the latest batch operation performed on the files table.'),
+    'page callback' => 'file_maintenance_report',
+    'access callback' => 'user_access',
+    'access arguments' => array('access file maintenance'),
+    'type' => MENU_NORMAL_ITEM,
+    'file' => 'includes/file_maintenance.admin.inc',
+  );
+
+  return $items;
+}
+
+/**
+ * Implementation of hook_theme()
+ */
+function file_maintenance_theme() {
+  $theme = array();
+
+  $theme['file_maintenance_content_form'] = array(
+    'arguments' => array('form' => NULL),
+    'file' => 'includes/file_maintenance.theme.inc',
+  );
+
+  $theme['file_maintenance_report'] = array(
+    'arguments' => array('cache' => NULL),
+    'file' => 'includes/file_maintenance.theme.inc',
+  );
+
+  return $theme;
+}
+
+/**
+ * Implementation of hook_form_FORM_ID_alter();
+ */
+function file_maintenance_form_system_file_system_settings_alter(&$form, &$form_state) {
+  if (isset($form_state['storage']['confirm_migration']) && $form_state['storage']['confirm_migration']) {
+    foreach ($form as $key => $value) {
+      // Remove obsolete form components to prevent them from showing up in the
+      // confirm form, keeping FAPI data intact.
+      if (stripos($key, '#') !== 0 && !in_array($key, array('form_build_id', 'form_token', 'form_id'))) {
+        unset($form[$key]);
+      }
+    }
+    // Replace the submit handler to prevent the original one from triggering
+    // again.
+    $form['#submit'] = array('_file_maintenance_migrate');
+    // Display a confirm form instead of the regular one.
+    $form = confirm_form(
+      $form,
+      t('Are you sure you wish to move all of your files from %source to %destination?', array('%source' => $form_state['values']['original_filedir'], '%destination' => $form_state['values']['file_directory_path'])),
+      'admin/settings/file-system',
+      NULL,
+      t('Confirm migration')
+    );
+  }
+  else {
+    $form['original_filedir'] = array(
+        '#type' => 'value',
+        '#value' => variable_get('file_directory_path', 'sites/default/files'),
+    );
+    $form['buttons']['submit']['#weight'] = 1;
+    $form['buttons']['file_maintenance'] = array(
+      '#type' => 'submit',
+      '#value' => t('Migrate files'),
+      '#weight' => 2,
+    );
+    $form['buttons']['reset']['#weight'] = 3;
+    // Add our extra submit handler.
+    $form['#submit'][] = '_file_maintenance_migrate';
+  }
+}
+
+/**
+ * Extra submit handler for File system settings form to start file migration.
+ */
+function _file_maintenance_migrate($form, &$form_state){
+  // No $form_state['values']['op'] !? Odd, so we use
+  // $form_state['clicked_button'] instead.
+  switch ($form_state['clicked_button']['#value']) {
+    case t('Migrate files'):
+      if ($form_state['values']['original_filedir'] != $form_state['values']['file_directory_path']) {
+        $form_state['storage']['actions']['bulk_action'] = 'migrate';
+        $form_state['storage']['actions']['file_modification'] = $form_state['values']['original_filedir'].'|'.$form_state['values']['file_directory_path'];
+        // Though we could theoretically neglect the original files directory in
+        // in the next function call, we do it so that we really have the files
+        // of the original files directory only. What if, just if, the files
+        // table is shared across multiple sites with different directories
+        // listed in it?
+        $files = file_maintenance_get_files(NULL, array(), $form_state['values']['original_filedir'], NULL, NULL, TRUE);
+
+        if ($files) {
+          while ($file = db_fetch_object($files)) {
+            $form_state['storage']['files']['fid_'.$file->fid] = $file->fid;
+          }
+          // Show confirm form when the form is rerendered!
+          $form_state['storage']['confirm_migration'] = TRUE;
+          $form['rebuild'] = TRUE;
+        }
+      }
+      else {
+        drupal_set_message(t('Your old and new file directories are the same. Migration aborted!'), 'error');
+      }
+      break;
+    case t('Confirm migration'):
+      // User confirmed to a dir based bulk action execution, so start the batch.
+      file_maintenance_batch($form_state['storage']['files'], $form_state['storage']['actions']);
+      break;
+  }
+}
+
+/**
+ * Setup batch processing.
+ *
+ * @param $files
+ *   Array of fids to process.
+ * @param $action
+ *   Action array that needs to be executed.
+ */
+function file_maintenance_batch($files, $action = NULL) {
+  $batch = array(
+    'operations' => array(
+      array('file_maintenance_batch_process', array($files, $action)),
+    ),
+    'finished' => 'file_maintenance_batch_finished',
+    'title' => t('Processing files'),
+    'init_message' => t('Initialising batch processing.'),
+    'progress_message' => t('Processed @current out of @total.'),
+    'error_message' => t('The file maintenance batch process has encountered an error.'),
+  );
+  batch_set($batch);
+  // We call file_maintenance_batch() from within a _submit() handler, so FAPI
+  // will call the batch_process() function for us.
+}
+
+/**
+ * Actual batch processing of files.
+ *
+ * @param $files
+ *   Array of fids to process.
+ * @param $action
+ *   Action array that needs to be executed.
+ * @param $context
+ *   Current status of the batch.
+ */
+function file_maintenance_batch_process($files, $action, &$context) {
+  // Initiate feedback counters.
+  if (!isset($context['sandbox']['progress'])) {
+    $context['sandbox']['progress'] = 0;
+    $context['sandbox']['last_file'] = 0;
+    $context['sandbox']['max'] = count($files);
+
+    // We do all variable_get requests here so they happen only once and not
+    // every batch pass.
+    // Max. number of files to process in each pass.
+    $context['sandbox']['limit'] = variable_get('file_maintenance_batch', 25);
+    // Action to perform when file exists.
+    $context['sandbox']['copy'] = variable_get('file_maintenance_copy', 'rename');
+    // Adjust timestamp?
+    $context['sandbox']['timestamp'] = variable_get('file_maintenance_touch', 0);
+    // Search and replace for changes in DB?
+    $context['sandbox']['search'] = variable_get('file_maintenance_search', 1);
+  }
+
+  // Get offset to start on.
+  if ($context['sandbox']['last_file'] == 0) {
+    $start = 0;
+  }
+  else {
+    $start = file_maintenance_array_key_relative($files, 'fid_'.$context['sandbox']['last_file']);
+  }
+  // Get a slice of the $files array to process.
+  $current_batch = array_slice($files, $start, $context['sandbox']['limit']);
+
+  $condition = 'fid IN('.db_placeholders($current_batch).')';
+  $result = file_maintenance_get_files($condition, $current_batch);
+
+  while ($file = db_fetch_object($result)) {
+    // 'Execute' the action on the object first.
+    file_maintenance_perform_action(&$file, $action);
+
+    switch ($action['bulk_action']) {
+      // The delete case is special. We delete the file on disk, but we replace
+      // the reference to the file in the files table with one given by the
+      // user. This way, all exisiting references to the fid won't break.
+      case 'delete':
+        $continue = TRUE;
+        break;
+      // Make a copy of the file. If that succeeds, continue with the other
+      // stuff and delete the original file when all went well. This way we
+      // never lose the original file and can easily revert if needed.
+      default:
+        $replace = FILE_EXISTS_RENAME;
+        if ($context['sandbox']['copy'] == 'error') {
+          $replace = FILE_EXISTS_ERROR;
+        }
+        $continue = file_maintenance_file_copy($file, $replace, $action['bulk_action']);
+    }
+    if ($continue) {
+      // Update timestamp.
+      if ($context['sandbox']['timestamp']) {
+        $file->timestamp = time();
+      }
+      // Save modified files record.
+      if (drupal_write_record('files', $file, 'fid') !== FALSE) {
+        // Search and replace node content to match the new filename and/or
+        // location.
+        if ($context['sandbox']['search']) {
+          $replace_results = file_maintenance_search_replace($file->filepathoriginal, $file->filepath);
+          // Store result for post-processing in the _finished() callback.
+          $context['results'][$file->fid]['results'] = $replace_results;
+        }
+        // All went well, so delete the original file.
+        file_delete($file->filepathoriginal);
+        $context['results'][$file->fid]['message'] = _file_maintenance_format_message($file, $action['bulk_action']);
+        $context['results'][$file->fid]['status'] = 'status';
+      }
+      else {
+        // Could not update files record, so delete the copy we made.
+        file_delete($file->filepath);
+        $context['results'][$file->fid]['message'] = t('Could not update the database record for %file. Nothing was changed!', array('%file' => $file->filenameoriginal));
+        $context['results'][$file->fid]['status'] = 'error';
+      }
+    }
+    else {
+      // Could not make a copy of the file before processing.
+      $context['results'][$file->fid]['message'] = t('Could not duplicate %file to start processing. Nothing was changed!', array('%file' => $file->filenameoriginal));
+      $context['results'][$file->fid]['status'] = 'error';
+    }
+    // Remove all messages that might have been set after the
+    // file_maintenance_file_copy() function call. This function has been
+    // rewritten to handle the messages differently, but the
+    // file_check_directory() function that gets called at some point still
+    // outputs stuff that we do not want. Instead of rewriting all of these
+    // functions, we'll just dump the messages set by drupal_set_message(). The
+    // messages we need are stored in the files object that we pass by
+    // reference.
+    $_SESSION['messages'] = NULL;
+
+    // Update our progress information.
+    $context['sandbox']['progress']++;
+    $context['sandbox']['last_file'] = $file->fid;
+    $context['message'] = t('Now processing %filename', array('%filename' => $file->filenameoriginal));
+  }
+
+  // Update progress status estimate.
+  if ($context['sandbox']['progress'] != $context['sandbox']['max']) {
+    $context['finished'] = $context['sandbox']['progress'] / $context['sandbox']['max'];
+  }
+}
+
+/**
+ * Batch 'finished' callback.
+ */
+function file_maintenance_batch_finished($success, $results, $operations) {
+  if ($success) {
+    $total = count($results);
+    $results['message'] = format_plural($total, '1 file processed', '@total files processed', array('@total' => $total)).'.';
+    // Store data in the cache.
+    cache_set('file-maintenance-report-data', $results);
+    // Redirect to the report page which retrieves the data from the cache and
+    // formats the output.
+    drupal_goto('admin/reports/file-maintenance');
+  }
+  else {
+    // $operations contains the operations that remained unprocessed.
+    $error_operation = reset($operations);
+    $message = t('An error occurred while processing %error_operation with arguments: @arguments', array('%error_operation' => $error_operation[0], '@arguments' => print_r($error_operation[1], TRUE)));
+    $status = 'error';
+    drupal_set_message($message, $status);
+  }
+}
+
+/**
+ * Get a list of all directories.
+ *
+ * @param $condition
+ *   SQL condition for the select statement
+ * @param $args
+ *   Arguments to pass to the query function
+ *
+ * @return resultset
+ */
+function file_maintenance_get_dirs($condition, $args) {
+  if (!empty($condition)) {
+    $condition = 'WHERE ' . $condition . ' ';
+  }
+  $sql = 'SELECT DISTINCT REPLACE(filepath, filename, "") AS dir FROM {files} '.$condition.'ORDER BY dir ASC';
+
+  return db_query($sql, $args);
+}
+
+/**
+ * Get all files from a specified dir.
+ *
+ * @param $condition
+ *   SQL condition for the select statement
+ * @param $args
+ *   Arguments to pass to the query function
+ * @param $dir
+ *   Directory to get files from
+ * @param $head
+ *   Properly formatted head array in case of tablesort
+ * @param $limit
+ *   Limit in case of pager query
+ * @param $base
+ *   Set to TRUE to treat $dir as a base dir and not a 'full' path.
+ *
+ * @return resultset
+ */
+function file_maintenance_get_files($condition = NULL, $args = array(), $dir = NULL, $head = NULL, $limit = NULL, $base = FALSE) {
+  if (!empty($condition)) {
+    $condition = 'WHERE ' . $condition . ' ';
+  }
+  $sql = 'SELECT * FROM {files} '.$condition;
+
+  // Restrict to a certain directory?
+  if ($dir != NULL) {
+    if (!empty($condition)) {
+      $sql .= 'AND ';
+    }
+    else {
+      $sql .= 'WHERE ';
+    }
+    if (!$base) {
+      $sql .= 'filepath REGEXP "^'.$dir.'/[^/]+$"';
+    }
+    else {
+      $sql .= 'filepath LIKE "'.$dir.'/%"';
+    }
+  }
+
+  // Tablesort or not?
+  if ($head != NULL) {
+    $sql .= tablesort_sql($head);
+  }
+
+  // Pager range or regular query?
+  if ($limit != NULL) {
+    $result = pager_query($sql, $limit, 0, NULL, $args);
+  }
+  else {
+    $result = db_query($sql, $args);
+  }
+
+  return $result;
+}
+
+/**
+ * Execute user selected action.
+ *
+ * @param $file
+ *   File object, passed by reference. The original filepath and filename will
+ *   be preserved in filepathoriginal and filenameoriginal.
+ * @param $action
+ *   Array containing the action parameters
+ */
+function file_maintenance_perform_action(&$file, $action) {
+  $file->filepathoriginal = $file->filepath;
+  $file->filenameoriginal = $file->filename;
+  switch ($action['bulk_action']) {
+    case 'move':
+      // Strip leading and trailing slashes.
+      $action['file_modification'] = trim($action['file_modification'], '/\\');
+      // Check if new path is within the Drupal files Directory.
+      $file_path = file_directory_path();
+      if (strpos($action['file_modification'], $file_path) !== 0) {
+        // If not, put it in the files directory!
+        $action['file_modification'] = $file_path . '/' . $action['file_modification'];
+      }
+      // Strip trailing slashes _again_ to prevent double ones in
+      // some cases. While moving to '/' (= root of default files directory) for
+      // example.
+      $file->filepath = rtrim($action['file_modification'], '/\\') . '/' . $file->filename;
+      break;
+    case 'migrate':
+      $src_dst = explode('|', $action['file_modification']);
+      // Replace the source base dir with the dest base dir, stripping leading
+      // and trailing slashes from src and dest.
+      $file->filepath = str_replace(trim($src_dst[0], '/\\'), trim($src_dst[1], '/\\'), $file->filepath);
+      break;
+    case 'delete':
+      $file->filepath = variable_get('file_maintenance_delete', 'sites/default/files/image-removed.jpg');
+      $file->filename = preg_replace('/.+\/(.+)/i', '$1', $file->filepath);
+      break;
+    case 'prefix':
+      // Add prefix after the last / encountered.
+      $file->filepath = preg_replace('/(.+)\/(.+)/i', '$1/'.$action['file_modification'].'$2', $file->filepath);
+      $file->filename = $action['file_modification'] . $file->filename;
+      break;
+    case 'remove-prefix':
+      // Add prefix after the last / encountered.
+      $file->filepath = preg_replace('/(.+)\/('.$action['file_modification'].')(.+)/i', '$1/$3', $file->filepath);
+      $file->filename = preg_replace('/('.$action['file_modification'].')(.+)/i', '$2', $file->filename);
+      break;
+    case 'postfix':
+      // Add suffix at the end of the file, before the file extension.
+      $file->filepath = preg_replace('/(.+)\/([^\.]+)(.*)/i', '$1/$2'.$action['file_modification'].'$3', $file->filepath);
+      $file->filename = preg_replace('/([^\.]+)(.*)/i', '$1'.$action['file_modification'].'$2', $file->filename);
+      break;
+    case 'remove-suffix':
+      // Add prefix after the last / encountered.
+      $file->filepath = preg_replace('/(.+)\/([^\.]+)('.$action['file_modification'].')(.*)/i', '$1/$2$4', $file->filepath);
+      $file->filename = preg_replace('/([^\.]+)('.$action['file_modification'].')(.*)/i', '$1$3', $file->filename);
+      break;
+    default:
+      // No action or unknown action, so restore the file object to its original
+      // state.
+      unset($file->filepathoriginal);
+      unset($file->filenameoriginal);
+  }
+}
+
+/**
+ * Copies a file to a new location.
+ *
+ * Taken form includes/file.inc, line 224 and modified! The original function is
+ * not good for batch usage: the feedback is all given using drupal_set_message,
+ * so we altered it.
+ * 
+ * This is a powerful function that in many ways performs like an advanced
+ * version of copy().
+ * - Checks if $source and $dest are valid and readable/writable.
+ * - Performs a file copy if $source is not equal to $dest.
+ * - If file already exists in $dest either the call will error out, replace the
+ *   file or rename the file based on the $replace parameter.
+ *
+ * @param $source
+ *   An object that has been passed through file_maintenance_perform_action() so
+ *   that it contains the proper attributes.
+ * @param $replace
+ *   Replace behavior when the destination file already exists.
+ *   - FILE_EXISTS_REPLACE: Replace the existing file.
+ *   - FILE_EXISTS_RENAME: Append _{incrementing number} until the filename is
+ *     unique.
+ *   - FILE_EXISTS_ERROR: Do nothing and return FALSE.
+ * @param $action
+ *   When the action is 'move', the destination directory will be created if it
+ *   does not exist.
+ *
+ * @return
+ *   TRUE for success, FALSE for failure. In case of failure, an error message
+ *   can be found in $source->error.
+ *
+ */
+function file_maintenance_file_copy(&$source, $replace = FILE_EXISTS_RENAME, $action = '') {
+  // Check if destination exists.
+  if ($action == 'move' || $action == 'migrate') {
+    $move_to = dirname($source->filepath);
+    // Make dir (recursive!) if it does not exist.
+    if (!realpath($move_to)) {
+      @mkdir($move_to, 0775, TRUE);
+    }
+  }
+
+  $dest = file_create_path($source->filepath);
+
+  $directory = $dest;
+  $basename = file_check_path($directory);
+
+  // Make sure we at least have a valid directory.
+  if ($basename === FALSE) {
+    $source->error = t('The file %file could not be copied, because the destination %directory could not be found, or because its permissions do not allow the file to be written.', array('%file' => $source->filename, '%directory' => $dest));
+    return 0;
+  }
+
+  // Process a file object.
+  $file = $source;
+  $source = $file->filepathoriginal;
+  if (!$basename) {
+    $basename = $file->filenameoriginal;
+  }
+
+  $source = realpath($source);
+  if (!file_exists($source)) {
+    $file->error = t('The selected file %file could not be copied, because no file by that name exists. Please check that you supplied the correct filename.', array('%file' => $source));
+    $source = $file;
+    return 0;
+  }
+
+  // If the destination file is not specified then use the filename of the source file.
+  $basename = $basename ? $basename : basename($source);
+  $dest = $directory .'/'. $basename;
+
+  // Make sure source and destination filenames are not the same, makes no sense
+  // to copy it if they are. In fact copying the file will most likely result in
+  // a 0 byte file. Which is bad. Real bad.
+  if ($source != realpath($dest)) {
+    if (!$dest = file_destination($dest, $replace)) {
+      $file->error = t('The selected file %file could not be copied, because a file by that name already exists in the destination.', array('%file' => $source));
+      $source = $file;
+      return FALSE;
+    }
+
+    if (!@copy($source, $dest)) {
+      $file->error = t('The selected file %file could not be copied.', array('%file' => $source));
+      $source = $file;
+      return 0;
+    }
+
+    // Give everyone read access so that FTP'd users or
+    // non-webserver users can see/read these files,
+    // and give group write permissions so group members
+    // can alter files uploaded by the webserver.
+    @chmod($dest, 0664);
+  }
+
+  $source = $file;
+
+  return 1; // Everything went ok.
+}
+
+/**
+ * Search and replace content in the database.
+ *
+ * @param string $search String to search for.
+ * @param string $replace String to replace found string with
+ *
+ * @return array
+ */
+function file_maintenance_search_replace($search, $replace) {
+  $tasks = $results = array();
+
+  // Get tables to process.
+  $tables = variable_get('file_maintenance_tables', FILE_MAINTENANCE_DEFAULT_SEARCH);
+  // Format on each line is: table|field1,field2
+  $tables = explode("\r\n", $tables);
+  // Build tasks array.
+  foreach ($tables as $data) {
+    $table = explode('|', $data);
+    // Store field names.
+    $fields = explode(',', $table[1]);
+    // Store table name.
+    $table = $table[0];
+
+    // The resulting rows can be fed directly into the db_query() function.
+    $tasks[$table][] = $table;
+    foreach ($fields as $field) {
+      $tasks[$table][] = $field;
+      $tasks[$table][] = $field;
+      $tasks[$table][] = $search;
+      $tasks[$table][] = $replace;
+    }
+  }
+
+  // Execute the task list.
+  foreach ($tasks as $key => $task) {
+    // Subtract one for the table name, 4 strings per field.
+    $count = (count($task)-1) / 4;
+    $sql = 'UPDATE {%s} SET ';
+    for ($i = 0; $i < $count; $i++) {
+      $sql .= '%s = replace(%s, "%s", "%s"), ';
+    }
+    // Remove last comma and space.
+    $sql = rtrim($sql, ', ');
+
+    $result = db_query($sql, $task);
+    // TODO: find a proper way of getting affected rows. For our query this
+    // _seemingly_ always returns the rows SEARCHED, not AFFECTED!?
+    // The exact same query in PHPMyAdmin _does_ properly report affected rows
+    // and in the end it just uses <dbengine>_affected_rows() :-s
+    // Store results for feedback to user.
+    $results[$key] = db_affected_rows();
+  }
+
+  return $results;
+}
+
+/**
+ * Helper function to format a status message based on the action performed.
+ *
+ * @param $file
+ *   A file object that has been passed through
+ *   file_maintenance_perform_action()
+ * @param $action
+ *   String of the action that was performed.
+ */
+function _file_maintenance_format_message($file, $action) {
+  switch ($action) {
+    case 'move':
+    case 'migrate':
+      $message = t('Moved %original to %destination.', array('%original' => $file->filepathoriginal, '%destination' => $file->filepath));
+      break;
+    case 'delete':
+      $message = t('Successfully deleted %original.', array('%original' => $file->filepathoriginal));
+      break;
+    default:
+      $message = t('Renamed %original to %destination.', array('%original' => $file->filepathoriginal, '%destination' => $file->filepath));
+  }
+
+  return $message;
+}
+
+/**
+ * Generate associative numeric array, kindof like php range().
+ *
+ * @param integer $start Value to start the array with
+ * @param integer $limit Value to end the array with
+ * @param integer $step Amount to increment each value in the array with
+ *
+ * @return array
+ */
+function _file_manager_range($start = 25, $limit = 300, $step = 25) {
+  $range = array();
+  while ($start <= $limit) {
+    $range[$start] = $start;
+    $start = $start+$step;
+  }
+
+  return $range;
+}
+
+/**
+ * Simple, yet powerful function for finding a key in an array relative to
+ * another key, by Jamon Holmgren (jamon@clearsightdesign.com).
+ * Ever so slightly altered for the file_maintenance module.
+ *
+ * Thanks Jamon, this should be a PHP native function!
+ *
+ * @param array $array Array to process
+ * @param integer|string $current_key Key to start from
+ * @param integer $offset Distance to the next key, positive or negative
+ * 
+ * @return mixed
+ */
+function file_maintenance_array_key_relative($array, $current_key, $offset = 1) {
+  // Create key map.
+  $keys = array_keys($array);
+  // Find current key.
+  $current_key_index = array_search($current_key, $keys);
+  // Return desired offset, if in array, or false if not
+  $new_position = $current_key_index + $offset;
+  if (isset($keys[$new_position])) {
+    return $new_position;
+  }
+
+  return FALSE;
+}

@@ -1,0 +1,10 @@
+name = File Maintenance
+description = Allows administrators to perform maintenance on the files table.
+core = 6.x
+
+; Information added by drupal.org packaging script on 2011-06-25
+version = "6.x-1.0-beta3"
+core = "6.x"
+project = "file_maintenance"
+datestamp = "1309010516"
+
