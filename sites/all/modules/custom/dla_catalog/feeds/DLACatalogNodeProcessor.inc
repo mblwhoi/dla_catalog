@@ -56,7 +56,7 @@ class DLACatalogNodeProcessor extends FeedsProcessor {
       $nid = $item['nid'];
 
       // Build node in memory.
-      $node = $this->buildNode($nid, $source->feed_nid);
+      $node = $this->buildNode($nid, 'record', $source->feed_nid);
 
       // Map and save node. If errors occur don't stop but report them.
       try {
@@ -234,7 +234,7 @@ class DLACatalogNodeProcessor extends FeedsProcessor {
             $item_node = "";
 
             // Load item node or initialize new node.
-            $item_node = $this->buildNode($v['nid'], $source->feed_nid);
+            $item_node = $this->buildNode($v['nid'], 'item', $source->feed_nid);
 
 
             // Set item field values.
@@ -437,18 +437,12 @@ class DLACatalogNodeProcessor extends FeedsProcessor {
   /**
    * Creates a new node object in memory and returns it.
    */
-  protected function buildNode($nid, $feed_nid) {
+  protected function buildNode($nid, $type, $feed_nid) {
     $populate = FALSE;
     $node = new stdClass();
     if (empty($nid)) {
       $node->created = FEEDS_REQUEST_TIME;
-      $populate = TRUE;
-    }
-    else {
-      $node = node_load($nid, NULL, TRUE);
-    }
-    if ($populate) {
-      $node->type = $this->config['content_type'];
+      $node->type = $type;
       $node->changed = FEEDS_REQUEST_TIME;
       $node->format = $this->config['input_format'];
       $node->feeds_node_item = new stdClass();
@@ -457,6 +451,10 @@ class DLACatalogNodeProcessor extends FeedsProcessor {
       $node->feeds_node_item->feed_nid = $feed_nid;
       $node->feeds_node_item->url = '';
       $node->feeds_node_item->guid = '';
+      $node->uid = $this->config['author'];
+    }
+    else {
+      $node = node_load($nid, NULL, TRUE);
     }
 
     static $included;
@@ -468,12 +466,11 @@ class DLACatalogNodeProcessor extends FeedsProcessor {
 
     // Populate properties that are set by node_object_prepare().
     $node->log = 'Created/updated by FeedsNodeProcessor';
-    if ($populate) {
-      $node->uid = $this->config['author'];
-    }
+
     return $node;
   }
-  }
+
+}
 
 
 
@@ -544,4 +541,5 @@ function dla_catalog_node_processor_is_valid_iso_date($iso_date){
 
   return preg_match($validation_regex, $iso_date);
 }
+
 
