@@ -112,7 +112,3 @@ function dla_catalog_node_processor_is_valid_iso_date($iso_date){
 
   return preg_match($validation_regex, $iso_date);
 }
-
-
-?>
-
